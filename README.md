@@ -56,7 +56,7 @@ dotnet build Cutback.csproj -c Release -p:BeatSaberDir="D:\Games\Beat Saber\1.40
 
 Alternatively, place the game instance in the ignored `Game` directory. The build restores the .NET Framework 4.8 reference package and resolves runtime references from the game installation. The resulting plugin is `bin/Release/net48/Cutback.dll`.
 
-The 1.1.0 release compiles with zero warnings and zero errors. VR interaction, replay playback and coexistence with other mods await in-game verification.
+The 1.0.0 release compiles with zero warnings and zero errors. VR interaction, replay playback and coexistence with other mods await in-game verification.
 
 ## License
 

@@ -3,7 +3,7 @@
   "id": "Cutback",
   "name": "Cutback",
   "author": "pigeonIabs",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "gameVersion": "1.40.8",
   "description": "Recent-attempt replay, automatic death review, exponential slow motion and 5 percent practice for Steam Beat Saber 1.40.8.",
   "dependsOn": {
