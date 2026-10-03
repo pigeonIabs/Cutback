@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+Game/
+artifacts/
+*.dll
+*.pdb
+*.bsor
+*.writing

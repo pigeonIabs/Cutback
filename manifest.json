@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bsmg/BSIPA-MetadataFileSchema/master/Schema.json",
+  "id": "Cutback",
+  "name": "Cutback",
+  "author": "pigeonIabs",
+  "version": "1.1.0",
+  "gameVersion": "1.40.8",
+  "description": "Recent-attempt replay, automatic death review, exponential slow motion and 5 percent practice for Steam Beat Saber 1.40.8.",
+  "dependsOn": {
+    "BSIPA": "^4.3.6",
+    "BeatLeader": "=0.9.33",
+    "BeatSaberMarkupLanguage": "^1.12.5",
+    "SiraUtil": "^3.2.1"
+  },
+  "loadAfter": [
+    "PracticePlugin",
+    "BetterPause",
+    "ScoreSaber",
+    "IntroSkip"
+  ],
+  "features": [],
+  "links": {
+    "project-home": "https://github.com/pigeonIabs/Cutback"
+  }
+}
