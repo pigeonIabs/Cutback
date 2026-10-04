@@ -50,7 +50,7 @@ namespace Cutback
             Reflect.Set(audio, "_playbackLoopIndex", 0);
             Reflect.Set(audio, "_fixingAudioSyncError", false);
             Reflect.Set(audio, "_inBetweenDSPBufferingTimeEstimate", 0f);
-            Reflect.Set(audio, "_dspTimeOffset", AudioSettings.dspTime - time / Math.Max(0.05f, audio.timeScale));
+            Reflect.Set(audio, "_dspTimeOffset", AudioSettings.dspTime - time / Math.Max(0.0025f, audio.timeScale));
         }
         internal static void Pitch(AudioManagerSO mixer, float scale)
         {
@@ -133,8 +133,8 @@ namespace Cutback
         private static bool Prefix(object __instance, float speedMultiplier, AudioTimeSyncController ____audioTimeSyncController, AudioManagerSO ____audioManagerSO)
         {
             if (!ReviewCoordinator.IsLocalReview) return true;
-            float speed = Mathf.Clamp(speedMultiplier, 0.05f, 2f);
-            if (Math.Abs(speed - ____audioTimeSyncController.timeScale) < 0.001f) return false;
+            float speed = Mathf.Clamp(speedMultiplier, 0.0025f, 2f);
+            if (Math.Abs(speed - ____audioTimeSyncController.timeScale) < 0.00001f) return false;
             // Keep audio running while ramping. Rebase the clock at the current pose time.
             Reflect.Set(____audioTimeSyncController, "_timeScale", speed);
             Reflect.Get<AudioSource>(____audioTimeSyncController, "_audioSource").pitch = speed;

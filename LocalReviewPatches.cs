@@ -1,38 +1,38 @@
 // Copyright (c) 2026 pigeonIabs
 // SPDX-License-Identifier: AGPL-3.0-only
 // Runtime linking permission is described in NOTICE.md.
-using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using HarmonyLib;
 
 namespace Cutback
 {
     [HarmonyPatch]
-    internal static class LocalReviewUI
+    internal static class LocalReplayModifiers
     {
-        private static readonly ConditionalWeakTable<object, object> Replaced = new ConditionalWeakTable<object, object>();
-        private static IEnumerable<MethodBase> TargetMethods()
+        private static System.Reflection.MethodBase TargetMethod() =>
+            AccessTools.Method("BeatLeader.Replayer.Tweaking.ModifiersTweak:Initialize");
+
+        private static bool Prefix()
         {
-            var type = AccessTools.TypeByName("BeatLeader.UI.ReplayerUIBinder");
-            yield return AccessTools.Method(type, "Start");
-            yield return AccessTools.Method(type, "OnDisable");
-        }
-        // Local review supplies a compact rectangular transport. The normal BeatLeader
-        // viewer keeps its existing interface for every other replay launch.
-        private static bool Prefix(object __instance, MethodBase __originalMethod)
-        {
-            if (__originalMethod.Name == "Start" && ReviewCoordinator.IsLocalReview)
-                Replaced.GetOrCreateValue(__instance);
-            return !Replaced.TryGetValue(__instance, out _);
+            if (!ReviewCoordinator.IsLocalReview) return true;
+            var values = ReviewCoordinator.Active.Header.ModifierValues;
+            if (values.HasValue) BeatLeader.ModifiersMapManager.LoadCustomModifiersMap(values.Value);
+            else BeatLeader.ModifiersMapManager.LoadGameplayModifiersMap();
+            return false;
         }
     }
 
     [HarmonyPatch]
-    internal static class LocalReviewLayoutShortcut
+    internal static class LocalReplayBounds
     {
-        private static MethodBase TargetMethod() => AccessTools.Method("BeatLeader.Replayer.Binding.PartialDisplayModeHotkey:OnKeyDown");
-        private static bool Prefix() => !ReviewCoordinator.IsLocalReview;
+        private static System.Reflection.MethodBase TargetMethod() =>
+            AccessTools.PropertyGetter(AccessTools.TypeByName("BeatLeader.Replayer.ReplayTimeController"), "ReplayEndTime");
+
+        private static void Postfix(ref float __result)
+        {
+            // BeatLeader extends No Fail replays to the song's end. Local captures
+            // have their own end, shared by the native timeline and transport.
+            if (ReviewCoordinator.IsLocalReview) __result = ReviewCoordinator.Active.Header.End;
+        }
     }
 
     [HarmonyPatch(typeof(SinglePlayerLevelSelectionFlowCoordinator), "HandleBasicLevelCompletionResults")]

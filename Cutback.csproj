@@ -15,6 +15,7 @@
     <BeatSaberDir Condition="'$(BeatSaberDir)' == ''">$(MSBuildThisFileDirectory)Game</BeatSaberDir>
     <ManagedDir>$(BeatSaberDir)\Beat Saber_Data\Managed</ManagedDir>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />

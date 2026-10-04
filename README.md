@@ -1,23 +1,30 @@
 # Cutback
 
-An instant replay mod for Beat Saber that shows how your last attempt ended.
+Cutback records Beat Saber solo attempts as local replays and lets you review them through BeatLeader's replay viewer.
 
-**Source-only development.** In-game testing exposed severe usability and game stability problems. Cutback is experimental source code pending fixes and successful in-game validation. Published builds will resume once it is release ready.
+**Source only for development.** The current code is going through validation in the game. Treat it as development code while replay flow, VR interaction, and mod compatibility are still being checked.
 
-When you fail, Cutback opens your recent recording a few seconds before death and slows playback exponentially as it approaches the final moment. Your last attempt is available immediately from the local recording, regardless of score or leaderboard eligibility.
+## Current behavior
 
-## Intended features
+- Cutback records the active attempt from the first available recorder frames through pause, failure, completion, seek, restart, or exit. Each snapshot covers the captured segment through its save boundary.
+- When a song fails, Cutback stays with Beat Saber's native failure flow and captures the scene's later movement for half a second of real time. The capture end follows the active song speed.
+- The failed results Replay action opens the failed attempt's own local snapshot when it matches the failed map.
+- A separate Replay icon appears above the original pause menu button row. Continue, restart, and back keep their native positions and actions.
+- Local reviews use BeatLeader's normal toolbar, time display, timeline, and markers throughout playback. Miss and bad cut X markers seek to a configurable start time before the event.
+- For local No Fail replays, the native timeline and transport end at the captured attempt boundary.
+- Misses participate in automatic focus and slow motion by default. Bad cuts start disabled. Their settings work independently. A recorded failure takes priority as the initial focus event.
+- Automatic speed follows an exponential ramp around the selected events, reaches the chosen minimum at each event, and holds through the configured tail. The default minimum is 10 percent of the recorded playback speed.
+- Beat Saber's practice speed slider ranges from 5 to 200 percent. With PracticePlugin installed, Cutback lowers its practice speed minimum to 5 percent.
 
-- Automatic death review starting three song seconds before failure
-- Exponential slowdown from full speed toward 10 percent at death
-- One replaceable recent replay holding 20 song seconds by default
-- Previous replay protected until the new attempt reaches five song seconds, configurable in settings
-- A Replay action in the pause menu
-- In-game settings on the song selection side panel
-- Optional looping, mistake navigation and replay transport controls
-- Practice speeds from 5 to 200 percent
+## Recent replay and settings
 
-## Compatibility
+Cutback keeps one recent replay at `UserData/Cutback/Recent/latest.bsor` with its index in `latest.json`. The default replacement grace is five song seconds. The current attempt starts recording immediately while the previous replay remains available during that grace. At the threshold, Cutback releases the previous replay from the active session. A later save publishes the current attempt in its place. Set the grace from zero to 120 seconds in the Cutback tab in Gameplay Setup.
+
+The same tab controls replay on death, missed note focus, bad cut focus, automatic slow motion, the start time before a mistake, slowdown duration, minimum speed, replacement grace, and death clip looping. Defaults are replay on death enabled, missed note focus enabled, bad cut focus disabled, automatic slow motion enabled, three seconds before a mistake, three seconds of slowdown, 10 percent minimum speed, five seconds of replacement grace, and looping disabled.
+
+The main menu Cutback page offers **Watch latest** and **Review mistake**. The pause Replay action uses the protected previous replay during the grace period. After promotion, it captures and reviews the active attempt.
+
+## Compatibility and limits
 
 Development targets Steam Beat Saber **1.40.8** and **BeatLeader 0.9.33**.
 
@@ -28,34 +35,20 @@ Development targets Steam Beat Saber **1.40.8** and **BeatLeader 0.9.33**.
 | BeatSaberMarkupLanguage | 1.12.5 |
 | SiraUtil | 3.2.1 |
 
-PracticePlugin 9.1.0 is optional and adds its existing live practice controls. Cutback integrates its speed and seek behavior. Recording covers solo gameplay supported by BeatLeader's recorder. The original map and its required extensions must remain installed for playback.
+PracticePlugin 9.1.0 is optional. Cutback adjusts its supported practice speed and clock behavior. Reviewing requires the recorded map and characteristic to remain installed. The replay viewer requires at least two captured movement frames. The local replay reader rejects files larger than 512 MB.
 
-## Intended usage
+## Build
 
-Choose **Replay** in the pause menu to review the current attempt. Opening review ends live gameplay and loads the captured scene through the game's scene transitions.
-
-On death, review launches automatically and pauses at the last captured pose. The replay transport provides play and pause, watch again, previous and next mistake, five-second jumps and exit. Choose **Cutback** in the main menu to watch the latest recording.
-
-Open the **Cutback** tab on the song selection side panel to adjust automatic death playback, slow motion, lead time, slowdown duration, minimum speed, clip length, replay replacement time and looping. Settings persist through BSIPA configuration. A very short attempt can provide less footage than the selected lead time.
-
-**Replace replay after** defaults to five song seconds and accepts 0 to 120 seconds. Each new attempt records immediately while the previous replay stays available during that interval. Pausing and choosing Replay before the threshold opens the previous attempt and discards the provisional local recording. Once the threshold is reached, replay access switches to the new attempt, including its opening footage within the selected clip length. Pauses and loading time leave the timer unchanged. An attempt ending during the interval preserves the previous replay. The first captured attempt can be saved immediately when the recent replay slot is empty.
-
-The recent recording replaces `UserData/Cutback/Recent/latest.bsor` and `latest.json`. BeatLeader manages its own ordinary recordings independently.
-
-## Building
-
-Install a .NET SDK and point the build at a compatible game instance containing the dependencies above.
+Build against an existing compatible game instance with the dependencies above.
 
 ```powershell
 dotnet build Cutback.csproj -c Release -p:BeatSaberDir="D:\Games\Beat Saber\1.40.8"
 ```
 
-Alternatively, place the game instance in the ignored `Game` directory. The build restores the .NET Framework 4.8 reference package and resolves runtime references from the game installation. The resulting plugin is `bin/Release/net48/Cutback.dll`.
-
-Release readiness requires successful in-game validation of VR interaction, replay playback, scene transitions and coexistence with other mods.
+You can also place the game instance in the ignored `Game` directory. The build restores the .NET Framework 4.8 reference package and reads runtime assemblies from that game instance. The output is `bin/Release/net48/Cutback.dll`.
 
 ## License
 
-Copyright (c) 2026 pigeonIabs. Cutback is licensed under [GNU AGPL-3.0](LICENSE), with the runtime linking permission in [NOTICE.md](NOTICE.md).
+Copyright (c) 2026 pigeonIabs. Cutback is licensed under [GNU AGPL-3.0](LICENSE), with runtime linking permission in [NOTICE.md](NOTICE.md).
 
-The adapted BeatLeader code retains its MIT notices. See [ThirdParty](ThirdParty) and [implementation notes](IMPLEMENTATION.md) for attribution and architecture.
+Third party notices are retained in [ThirdParty](ThirdParty). See [IMPLEMENTATION.md](IMPLEMENTATION.md) for architecture and upstream attribution.

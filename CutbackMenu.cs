@@ -108,7 +108,7 @@ namespace Cutback
                 selection = CutbackUI.Text(content, "", 0, 14, 140, 14, 4f);
                 selection.enableWordWrapping = true;
                 watch = CutbackUI.Button(content, "Watch latest", -29, -6, 52, 9, () => CutbackMenu.Instance.Watch(recent, false));
-                focus = CutbackUI.Button(content, "Review ending", 29, -6, 52, 9, () => CutbackMenu.Instance.Watch(recent, true));
+                focus = CutbackUI.Button(content, "Review mistake", 29, -6, 52, 9, () => CutbackMenu.Instance.Watch(recent, true));
                 status = CutbackUI.Text(content, "", 0, -22, 140, 8, 2.8f);
             }
             Refresh();

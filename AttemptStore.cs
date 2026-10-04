@@ -22,6 +22,7 @@ namespace Cutback
         public float Start, End, Speed;
         public int Frames;
         public float? DeathTime;
+        public BeatLeader.Models.ModifiersMap? ModifierValues;
         public float[] Mistakes = Array.Empty<float>();
     }
 

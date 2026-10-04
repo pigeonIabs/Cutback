@@ -70,14 +70,14 @@ namespace Cutback
     public class Settings
     {
         public virtual float MistakeSpeedPercent { get; set; } = 10;
-        public virtual float LeadSeconds { get; set; } = 0.8f;
         public virtual float TailSeconds { get; set; } = 0.5f;
         public virtual float ReviewLeadSeconds { get; set; } = 3;
         public virtual bool AutomaticSlowMotion { get; set; } = true;
         public virtual int CheckpointSeconds { get; set; } = 30;
         public virtual bool ReplayOnDeath { get; set; } = true;
-        public virtual float BufferSeconds { get; set; } = 20;
         public virtual float ReplayReplacementSeconds { get; set; } = 5;
+        public virtual bool ReviewMissedNotes { get; set; } = true;
+        public virtual bool ReviewBadCuts { get; set; } = false;
         public virtual float SlowdownSeconds { get; set; } = 3;
         public virtual bool LoopDeathClip { get; set; } = false;
     }
@@ -96,7 +96,10 @@ namespace Cutback
         public override void InstallBindings()
         {
             if (Plugin.Ready)
+            {
                 Container.BindInterfacesAndSelfTo<AttemptSession>().AsSingle().NonLazy();
+                Container.BindLateTickableExecutionOrder<AttemptSession>(100);
+            }
         }
     }
 

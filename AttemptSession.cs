@@ -15,9 +15,13 @@ using CutInfo = BeatLeader.Models.Replay.NoteCutInfo;
 
 namespace Cutback
 {
-    public sealed class AttemptSession : IInitializable, ITickable, IDisposable
+    public sealed class AttemptSession : IInitializable, ITickable, ILateTickable, IDisposable
     {
         internal static AttemptSession Current;
+        internal static AttemptSnapshot FailedResultReplay { get; private set; }
+        internal static BeatmapKey? FailedResultKey { get; private set; }
+        internal static bool HasFailedResult(BeatmapKey key) => FailedResultReplay != null &&
+            FailedResultKey.HasValue && FailedResultKey.Value.Equals(key);
         [InjectOptional] private readonly ReplayRecorder recorder;
         [Inject] private readonly GameplayCoreSceneSetupData setup;
         [Inject] private readonly AudioTimeSyncController clock;
@@ -41,6 +45,10 @@ namespace Cutback
         private Action exitReview;
         private readonly List<NoteEvent> immediateMistakes = new List<NoteEvent>();
         private RectTransform pauseRoot;
+        private float? failureTime;
+        private float failureStartedAt, failureTailUntil;
+        private readonly List<Frame> failureTailFrames = new List<Frame>();
+        private bool automaticFailureReview;
 
         public void Initialize()
         {
@@ -78,6 +86,10 @@ namespace Cutback
             pauseOffset = live.pauses.Count;
             immediateMistakes.Clear();
             finalized = false;
+            failureTime = null;
+            failureTailFrames.Clear();
+            FailedResultReplay = null;
+            FailedResultKey = null;
             recordingPromoted = false;
             replacementSeconds = Plugin.Settings.ReplayReplacementSeconds;
             if (float.IsNaN(replacementSeconds) || float.IsInfinity(replacementSeconds)) replacementSeconds = 5;
@@ -93,6 +105,7 @@ namespace Cutback
                 Plugin.Guard(exitReview);
             }
             if (ReviewCoordinator.IsLocalReview) { ReviewCoordinator.Tick(); return; }
+            if (failureTime.HasValue) return;
             if (!enabled || finalized || seeking || clock.state != AudioTimeSyncController.State.Playing) return;
             UpdateReplayOwnership();
             if (Time.realtimeSinceStartup >= checkpointAt)
@@ -102,9 +115,34 @@ namespace Cutback
             }
         }
 
+        public void LateTick()
+        {
+            // BeatLeader still measures real poses during the native failure animation,
+            // even after the audio clock stops. Give only our owned tail frames a
+            // continuous timestamp, leaving BeatLeader's ordinary recording untouched.
+            if (!enabled || finalized || !failureTime.HasValue) return;
+            // Sample the deadline and frame time together. Real time can advance
+            // during this method if the game stalls or collects garbage.
+            float now = Time.realtimeSinceStartup;
+            CaptureFailureFrame(now);
+            if (now >= failureTailUntil) Plugin.Guard(() => Save("Failed", true));
+        }
+
+        private void CaptureFailureFrame(float now)
+        {
+            float elapsed = Math.Min(0.5f, now - failureStartedAt);
+            float time = failureTime.Value + elapsed * segmentSpeed;
+            if (live.frames.Count > 0 && (failureTailFrames.Count == 0 || time > failureTailFrames[failureTailFrames.Count - 1].time))
+            {
+                var measured = Reflect.Clone(live.frames[live.frames.Count - 1]);
+                measured.time = time;
+                failureTailFrames.Add(measured);
+            }
+        }
+
         internal void Cut(NoteController note, in global::NoteCutInfo cut)
         {
-            if (seeking || finalized || cut.allIsOK) return;
+            if (seeking || finalized || failureTime.HasValue || cut.allIsOK) return;
             immediateMistakes.Add(new NoteEvent {
                 noteID = BeatLeader.Utils.ReplayDataUtils.ComputeNoteId(note.noteData),
                 spawnTime = note.noteData.time, eventTime = clock.songTime,
@@ -115,7 +153,7 @@ namespace Cutback
 
         internal void Miss(NoteController note)
         {
-            if (seeking || finalized || note.noteData.colorType == ColorType.None || note.noteData.scoringType == NoteData.ScoringType.NoScore) return;
+            if (seeking || finalized || failureTime.HasValue || note.noteData.colorType == ColorType.None || note.noteData.scoringType == NoteData.ScoringType.NoScore) return;
             immediateMistakes.Add(new NoteEvent {
                 noteID = BeatLeader.Utils.ReplayDataUtils.ComputeNoteId(note.noteData),
                 spawnTime = note.noteData.time, eventTime = clock.songTime, eventType = NoteEventType.miss
@@ -125,7 +163,7 @@ namespace Cutback
         private void Paused() => Plugin.Guard(() =>
         {
             Save("Paused", false);
-            if (pauseRoot == null) pauseRoot = CutbackUI.CreatePauseReview(pauseMenu, Review);
+            if (pauseRoot == null) pauseRoot = PauseReplayButton.Create(pauseMenu, Review);
             pauseRoot.gameObject.SetActive(true);
         });
         private void Resumed() { if (pauseRoot != null) pauseRoot.gameObject.SetActive(false); }
@@ -145,7 +183,7 @@ namespace Cutback
                 if (!usePrevious) snapshot = Snapshot(finalized ? outcome : "Reviewed");
                 if (snapshot == null || snapshot.Replay.frames.Count < 2)
                 {
-                    CutbackUI.PauseMessage(pauseRoot, "Play a little longer to capture motion");
+                    PauseReplayButton.SetMessage(pauseRoot, "Play a little longer to capture motion");
                     return;
                 }
                 if (!usePrevious) AttemptStore.Save(snapshot);
@@ -158,41 +196,26 @@ namespace Cutback
                 reviewExitAt = Time.realtimeSinceStartup + 0.06f;
                 reviewExitRequested = true;
                 exitReview = () => returnToMenu.ReturnToMenu();
-                CutbackUI.PauseMessage(pauseRoot, "Opening replay");
+                PauseReplayButton.SetMessage(pauseRoot, "Opening replay");
                 Plugin.Log.Info("Queued pause replay " + snapshot.Header.Id + " with " + snapshot.Replay.frames.Count + " frames");
             }
             catch (Exception ex)
             {
                 Plugin.Log.Error(ex);
-                CutbackUI.PauseMessage(pauseRoot, "Replay needs attention. See the game log.");
+                PauseReplayButton.SetMessage(pauseRoot, "Replay needs attention. See the game log.");
             }
             finally { reviewLoading = false; }
         }
 
-        internal bool ReviewDeath(StandardLevelFailedController controller)
+        internal void MarkFailed(bool autoRestart)
         {
-            if (!enabled || finalized || !Plugin.Settings.ReplayOnDeath || reviewExitRequested) return false;
-            if (PreservesPreviousReplay()) return false;
-            var snapshot = Snapshot("Failed");
-            if (snapshot == null || snapshot.Replay.frames.Count < 2) return false;
-            snapshot.Header.DeathTime = clock.songTime;
-            AttemptStore.Save(snapshot);
-            finalized = true;
+            if (!enabled || finalized || failureTime.HasValue) return;
+            UpdateReplayOwnership();
+            failureTime = clock.songTime;
+            failureStartedAt = Time.realtimeSinceStartup;
+            failureTailUntil = failureStartedAt + 0.5f;
+            automaticFailureReview = Plugin.Settings.ReplayOnDeath && !autoRestart;
             outcome = "Failed";
-            ReviewCoordinator.Queue(snapshot, true);
-            // Finish on the following tick, after the energy event completes dispatching.
-            exitReview = () =>
-            {
-                var song = Reflect.Get<GameSongController>(controller, "_gameSongController");
-                song.StopSong();
-                var results = Reflect.Get<PrepareLevelCompletionResults>(controller, "_prepareLevelCompletionResults")
-                    .FillLevelCompletionResults(LevelCompletionResults.LevelEndStateType.Failed, LevelCompletionResults.LevelEndAction.Quit);
-                Reflect.Get<StandardLevelScenesTransitionSetupDataSO>(controller, "_standardLevelSceneSetupData").Finish(results);
-            };
-            reviewExitAt = Time.realtimeSinceStartup;
-            reviewExitRequested = true;
-            Plugin.Log.Info("Queued death replay at " + snapshot.Header.DeathTime.Value);
-            return true;
         }
 
         internal void BeforeSeek()
@@ -215,17 +238,35 @@ namespace Cutback
         internal void Save(string reason, bool finish)
         {
             if (!enabled || finalized) return;
+            // A native completion callback can run before our next late tick.
+            // Include its final measured pose and use the same finalization path.
+            if (finish && failureTime.HasValue) CaptureFailureFrame(Time.realtimeSinceStartup);
+            AttemptSnapshot snapshot = null;
             if (!PreservesPreviousReplay())
             {
-                var snapshot = Snapshot(reason);
+                snapshot = Snapshot(failureTime.HasValue ? "Failed" : reason);
                 if (snapshot != null && snapshot.Replay.frames.Count >= 2) AttemptStore.Save(snapshot);
             }
-            if (finish) { finalized = true; outcome = reason; }
+            if (finish)
+            {
+                finalized = true;
+                outcome = failureTime.HasValue ? "Failed" : reason;
+                if (failureTime.HasValue)
+                {
+                    FailedResultReplay = snapshot?.Replay.frames.Count >= 2 ? snapshot : AttemptStore.GetLatest();
+                    FailedResultKey = setup.beatmapKey;
+                    if (FailedResultReplay?.Header.Id == id)
+                    {
+                        Plugin.Log.Info($"Captured failed attempt through {FailedResultReplay.Header.End:F3}s, failure at {failureTime.Value:F3}s");
+                        if (automaticFailureReview) ReviewCoordinator.Queue(FailedResultReplay, true);
+                    }
+                }
+            }
         }
 
         private void UpdateReplayOwnership()
         {
-            if (recordingPromoted || clock.songTime - segmentStart < replacementSeconds) return;
+            if (recordingPromoted || failureTime.HasValue || clock.songTime - segmentStart < replacementSeconds) return;
             recordingPromoted = true;
             AttemptStore.PromoteRecording(id);
         }
@@ -242,42 +283,57 @@ namespace Cutback
             // The recorder's completed frames are append-only. Copy list ownership and all
             // mutable note/wall/header objects before handing work to the disk writer.
             var frames = new List<Frame>();
-            float bufferStart = Math.Max(segmentStart, clock.songTime - Mathf.Clamp(Plugin.Settings.BufferSeconds, 5f, 120f));
+            float captureEnd = failureTime.HasValue
+                ? (failureTailFrames.Count > 0 ? failureTailFrames[failureTailFrames.Count - 1].time : failureTime.Value)
+                : clock.songTime;
+            float recorderEnd = failureTime ?? captureEnd;
             float last = float.NegativeInfinity;
             for (int i = frameOffset; i < live.frames.Count; i++)
             {
                 var frame = live.frames[i];
-                if (frame.time < bufferStart || frame.time <= last || frame.time > clock.songTime + 0.01f) continue;
+                if (frame.time < segmentStart || frame.time <= last || frame.time > recorderEnd + 0.001f) continue;
+                frames.Add(frame);
+                last = frame.time;
+            }
+            foreach (var frame in failureTailFrames)
+            {
+                if (frame.time <= last) continue;
                 frames.Add(frame);
                 last = frame.time;
             }
             // The paused clock can be one frame ahead of LateTick. Hold the last measured
             // pose at that exact time so an immediate mistake remains inside the replay.
-            if (frames.Count > 0 && clock.songTime > last && clock.songTime - last < 0.1f)
+            if (frames.Count > 0 && captureEnd > last && captureEnd - last < 0.1f)
             {
                 var finalFrame = Reflect.Clone(frames[frames.Count - 1]);
-                finalFrame.time = clock.songTime;
+                finalFrame.time = captureEnd;
                 frames.Add(finalFrame);
             }
             var replay = new Replay {
                 info = Reflect.Clone(live.info), frames = frames,
-                notes = live.notes.Skip(noteOffset).Where(n => n.eventType != NoteEventType.unknown && n.spawnTime >= filterStart).Select(CloneNote).ToList(),
+                notes = live.notes.Skip(noteOffset).Where(n => n.eventType != NoteEventType.unknown && n.spawnTime >= filterStart && n.eventTime <= recorderEnd).Select(CloneNote).ToList(),
                 walls = live.walls.Skip(wallOffset).Select(Reflect.Clone).ToList(),
                 heights = live.heights.Skip(heightOffset).Select(Reflect.Clone).ToList(),
                 pauses = live.pauses.Skip(pauseOffset).Select(Reflect.Clone).ToList(),
                 saberOffsets = Reflect.Clone(live.saberOffsets),
                 customData = new Dictionary<string, byte[]>()
             };
+            var recordedNotes = new Dictionary<(int, float), NoteEvent>(replay.notes.Count);
+            foreach (var note in replay.notes) recordedNotes[(note.noteID, note.spawnTime)] = note;
             foreach (var mistake in immediateMistakes)
             {
-                var recorded = replay.notes.FirstOrDefault(n => n.noteID == mistake.noteID && Math.Abs(n.spawnTime - mistake.spawnTime) < 0.001f);
-                if (recorded == null) replay.notes.Add(CloneNote(mistake));
+                if (!recordedNotes.TryGetValue((mistake.noteID, mistake.spawnTime), out var recorded))
+                {
+                    var copy = CloneNote(mistake);
+                    replay.notes.Add(copy);
+                    recordedNotes[(copy.noteID, copy.spawnTime)] = copy;
+                }
                 else if (recorded.eventType == NoteEventType.bad || recorded.eventType == NoteEventType.miss || recorded.eventType == NoteEventType.bomb)
                     recorded.eventTime = mistake.eventTime;
             }
             replay.notes.Sort((a, b) => a.eventTime.CompareTo(b.eventTime));
             ReplayMetadata.Fill(replay.info, setup, score.multipliedScore, movement.jumpDistance);
-            replay.info.startTime = Math.Max(filterStart, bufferStart);
+            replay.info.startTime = filterStart;
             // A pause speed edit belongs to the next seek segment. Preserve the speed
             // at which this segment was recorded rather than the newly selected value.
             replay.info.speed = segmentSpeed;
@@ -290,8 +346,9 @@ namespace Cutback
                 Start = frames.Count > 0 ? frames[0].time : filterStart,
                 End = frames.Count > 0 ? frames[frames.Count - 1].time : filterStart,
                 Speed = replay.info.speed, Frames = frames.Count,
-                DeathTime = reason == "Failed" ? (float?)clock.songTime : null,
-                Mistakes = replay.notes.Where(n => IsMistake(n) && n.eventTime >= bufferStart).Select(n => n.eventTime).Distinct().OrderBy(t => t).ToArray()
+                DeathTime = failureTime,
+                ModifierValues = ModifiersMapManager.CurrentModifiersMap,
+                Mistakes = replay.notes.Where(n => IsMistake(n) && n.eventTime >= segmentStart && n.eventTime <= captureEnd).Select(n => n.eventTime).Distinct().OrderBy(t => t).ToArray()
             };
             return new AttemptSnapshot { Header = header, Replay = replay };
         }
@@ -363,23 +420,13 @@ namespace Cutback
         });
     }
 
-    [HarmonyPatch(typeof(StandardLevelGameplayManager), "HandleGameEnergyDidReach0")]
+    [HarmonyPatch(typeof(StandardLevelFailedController), "HandleLevelFailed")]
     internal static class CaptureFailure
     {
-        private static void Postfix(StandardLevelGameplayManager __instance)
+        private static void Prefix(StandardLevelFailedController __instance)
         {
-            if (Reflect.Get<object>(__instance, "_gameState").ToString() == "Failed")
-                Plugin.Guard(() => AttemptSession.Current?.Save("Failed", true));
-        }
-    }
-
-    [HarmonyPatch(typeof(StandardLevelFailedController), "HandleLevelFailed")]
-    internal static class AutomaticDeathReview
-    {
-        private static bool Prefix(StandardLevelFailedController __instance)
-        {
-            try { return !(AttemptSession.Current?.ReviewDeath(__instance) ?? false); }
-            catch (Exception ex) { Plugin.Log.Error(ex); return true; }
+            Plugin.Guard(() => AttemptSession.Current?.MarkFailed(
+                Reflect.Get<StandardLevelFailedController.InitData>(__instance, "_initData").autoRestart));
         }
     }
 }
