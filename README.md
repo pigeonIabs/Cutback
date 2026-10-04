@@ -2,9 +2,11 @@
 
 An instant replay mod for Beat Saber that shows how your last attempt ended.
 
+**Source-only development.** In-game testing exposed severe usability and game stability problems. Cutback is experimental source code pending fixes and successful in-game validation. Published builds will resume once it is release ready.
+
 When you fail, Cutback opens your recent recording a few seconds before death and slows playback exponentially as it approaches the final moment. Your last attempt is available immediately from the local recording, regardless of score or leaderboard eligibility.
 
-## Features
+## Intended features
 
 - Automatic death review starting three song seconds before failure
 - Exponential slowdown from full speed toward 10 percent at death
@@ -16,7 +18,7 @@ When you fail, Cutback opens your recent recording a few seconds before death an
 
 ## Compatibility
 
-This release targets Steam Beat Saber **1.40.8** and **BeatLeader 0.9.33**.
+Development targets Steam Beat Saber **1.40.8** and **BeatLeader 0.9.33**.
 
 | Dependency | Version |
 | --- | --- |
@@ -27,16 +29,7 @@ This release targets Steam Beat Saber **1.40.8** and **BeatLeader 0.9.33**.
 
 PracticePlugin 9.1.0 is optional and adds its existing live practice controls. Cutback integrates its speed and seek behavior. Recording covers solo gameplay supported by BeatLeader's recorder. The original map and its required extensions must remain installed for playback.
 
-## Installation
-
-1. Close Beat Saber.
-2. Download the ZIP from [Releases](https://github.com/pigeonIabs/Cutback/releases).
-3. Extract its contents into the Beat Saber 1.40.8 instance folder. The plugin belongs at `Plugins/Cutback.dll`.
-4. Launch that instance normally.
-
-For an upgrade from PracticeForge, replace `Plugins/PracticeForge.dll` with Cutback. Its previous configuration can be copied from `UserData/PracticeForge.json` to `UserData/Cutback.json`. The previous `Recent` folder can be copied to `UserData/Cutback/Recent`. Cutback reads the previous replay metadata format.
-
-## Usage
+## Intended usage
 
 Choose **Replay** in the pause menu to review the current attempt. Opening review ends live gameplay and loads the captured scene through the game's scene transitions.
 
@@ -56,7 +49,7 @@ dotnet build Cutback.csproj -c Release -p:BeatSaberDir="D:\Games\Beat Saber\1.40
 
 Alternatively, place the game instance in the ignored `Game` directory. The build restores the .NET Framework 4.8 reference package and resolves runtime references from the game installation. The resulting plugin is `bin/Release/net48/Cutback.dll`.
 
-The 1.0.0 release compiles with zero warnings and zero errors. VR interaction, replay playback and coexistence with other mods await in-game verification.
+Release readiness requires successful in-game validation of VR interaction, replay playback, scene transitions and coexistence with other mods.
 
 ## License
 
