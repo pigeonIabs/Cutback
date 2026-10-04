@@ -11,6 +11,7 @@ When you fail, Cutback opens your recent recording a few seconds before death an
 - Automatic death review starting three song seconds before failure
 - Exponential slowdown from full speed toward 10 percent at death
 - One replaceable recent replay holding 20 song seconds by default
+- Previous replay protected until the new attempt reaches five song seconds, configurable in settings
 - A Replay action in the pause menu
 - In-game settings on the song selection side panel
 - Optional looping, mistake navigation and replay transport controls
@@ -35,7 +36,9 @@ Choose **Replay** in the pause menu to review the current attempt. Opening revie
 
 On death, review launches automatically and pauses at the last captured pose. The replay transport provides play and pause, watch again, previous and next mistake, five-second jumps and exit. Choose **Cutback** in the main menu to watch the latest recording.
 
-Open the **Cutback** tab on the song selection side panel to adjust automatic death playback, slow motion, lead time, slowdown duration, minimum speed, clip length and looping. Settings persist through BSIPA configuration. A very short attempt can provide less footage than the selected lead time.
+Open the **Cutback** tab on the song selection side panel to adjust automatic death playback, slow motion, lead time, slowdown duration, minimum speed, clip length, replay replacement time and looping. Settings persist through BSIPA configuration. A very short attempt can provide less footage than the selected lead time.
+
+**Replace replay after** defaults to five song seconds and accepts 0 to 120 seconds. Each new attempt records immediately while the previous replay stays available during that interval. Pausing and choosing Replay before the threshold opens the previous attempt and discards the provisional local recording. Once the threshold is reached, replay access switches to the new attempt, including its opening footage within the selected clip length. Pauses and loading time leave the timer unchanged. An attempt ending during the interval preserves the previous replay. The first captured attempt can be saved immediately when the recent replay slot is empty.
 
 The recent recording replaces `UserData/Cutback/Recent/latest.bsor` and `latest.json`. BeatLeader manages its own ordinary recordings independently.
 

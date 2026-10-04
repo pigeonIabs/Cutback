@@ -38,6 +38,8 @@ namespace Cutback
         private static readonly object Gate = new object();
         private static readonly Dictionary<string, AttemptHeader> Headers = new Dictionary<string, AttemptHeader>();
         private static Task pending = Task.CompletedTask;
+        private static Task recovery = Task.CompletedTask;
+        private static bool recoverySuperseded;
         internal static string DirectoryPath { get; private set; }
         internal static AttemptSnapshot Latest { get; private set; }
         internal static volatile string Error;
@@ -46,7 +48,7 @@ namespace Cutback
         {
             DirectoryPath = Path.Combine(UnityGame.UserDataPath, "Cutback", "Recent");
             Directory.CreateDirectory(DirectoryPath);
-            pending = Task.Run(() =>
+            recovery = pending = Task.Run(() =>
             {
                 string latestPath = ReplayPath(null);
                 if (File.Exists(latestPath))
@@ -56,7 +58,7 @@ namespace Cutback
                         var snapshot = Read(latestPath);
                         if (snapshot != null) lock (Gate)
                         {
-                            if (Latest == null) { Latest = snapshot; Headers[snapshot.Header.Id] = snapshot.Header; }
+                            if (!recoverySuperseded && Latest == null) { Latest = snapshot; Headers[snapshot.Header.Id] = snapshot.Header; }
                         }
                     }
                     catch (Exception ex) { Plugin.Log.Warn("Recent replay recovery " + ex.Message); }
@@ -74,12 +76,45 @@ namespace Cutback
         private static string ReplayPath(string id) => Path.Combine(DirectoryPath, "latest.bsor");
         private static string IndexPath(string id) => Path.Combine(DirectoryPath, "latest.json");
 
+        internal static AttemptSnapshot GetLatest()
+        {
+            lock (Gate) return Latest;
+        }
+
+        internal static bool HasPrevious(string attemptId)
+        {
+            lock (Gate)
+                return (Latest != null && Latest.Header.Id != attemptId) ||
+                    (!recoverySuperseded && !recovery.IsCompleted);
+        }
+
+        internal static async Task<AttemptSnapshot> LatestAfterRecovery()
+        {
+            await recovery;
+            return GetLatest();
+        }
+
+        internal static void PromoteRecording(string attemptId)
+        {
+            lock (Gate)
+            {
+                recoverySuperseded = true;
+                if (Latest?.Header.Id == attemptId) return;
+                // Retire replay access with a reference change only. The recorder already
+                // owns the new frames. Its next ordinary save replaces the file atomically
+                // on the background writer, without threshold-time copying or disk work.
+                Latest = null;
+                Headers.Clear();
+            }
+        }
+
         internal static void Save(AttemptSnapshot snapshot)
         {
             if (!Valid(snapshot.Header)) throw new InvalidDataException("Invalid local attempt identity.");
             snapshot.Replay.customData[MetadataKey] = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(snapshot.Header));
             lock (Gate)
             {
+                recoverySuperseded = true;
                 Latest = snapshot;
                 Headers.Clear();
                 Headers[snapshot.Header.Id] = snapshot.Header;

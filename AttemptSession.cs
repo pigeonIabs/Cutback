@@ -33,7 +33,10 @@ namespace Cutback
         private string id, outcome;
         private DateTime created;
         private bool finalized, seeking, enabled;
+        private bool recordingPromoted;
+        private float replacementSeconds;
         private bool reviewExitRequested;
+        private bool reviewLoading;
         private float reviewExitAt;
         private Action exitReview;
         private readonly List<NoteEvent> immediateMistakes = new List<NoteEvent>();
@@ -75,6 +78,10 @@ namespace Cutback
             pauseOffset = live.pauses.Count;
             immediateMistakes.Clear();
             finalized = false;
+            recordingPromoted = false;
+            replacementSeconds = Plugin.Settings.ReplayReplacementSeconds;
+            if (float.IsNaN(replacementSeconds) || float.IsInfinity(replacementSeconds)) replacementSeconds = 5;
+            replacementSeconds = Mathf.Clamp(replacementSeconds, 0, 120);
             checkpointAt = Time.realtimeSinceStartup + Math.Max(10, Plugin.Settings.CheckpointSeconds);
         }
 
@@ -87,6 +94,7 @@ namespace Cutback
             }
             if (ReviewCoordinator.IsLocalReview) { ReviewCoordinator.Tick(); return; }
             if (!enabled || finalized || seeking || clock.state != AudioTimeSyncController.State.Playing) return;
+            UpdateReplayOwnership();
             if (Time.realtimeSinceStartup >= checkpointAt)
             {
                 checkpointAt = Time.realtimeSinceStartup + Math.Max(10, Plugin.Settings.CheckpointSeconds);
@@ -122,30 +130,49 @@ namespace Cutback
         });
         private void Resumed() { if (pauseRoot != null) pauseRoot.gameObject.SetActive(false); }
 
-        private void Review() => Plugin.Guard(() =>
+        private async void Review()
         {
-            if (reviewExitRequested || ReviewCoordinator.Pending != null) return;
-            AttemptSnapshot snapshot = Snapshot(finalized ? outcome : "Reviewed");
-            if (snapshot == null || snapshot.Replay.frames.Count < 2)
+            if (reviewLoading || reviewExitRequested || ReviewCoordinator.Pending != null) return;
+            reviewLoading = true;
+            try
             {
-                CutbackUI.PauseMessage(pauseRoot, "Play a little longer to capture motion");
-                return;
+                bool usePrevious = PreservesPreviousReplay();
+                AttemptSnapshot snapshot = usePrevious ? await AttemptStore.LatestAfterRecovery() : null;
+                // Recovery runs off-thread at startup. Preserve its replay while loading,
+                // and abandon the request if the player has already left or resumed.
+                if (Current != this || clock.state != AudioTimeSyncController.State.Paused || ReviewCoordinator.Pending != null) return;
+                usePrevious = usePrevious && snapshot != null && PreservesPreviousReplay();
+                if (!usePrevious) snapshot = Snapshot(finalized ? outcome : "Reviewed");
+                if (snapshot == null || snapshot.Replay.frames.Count < 2)
+                {
+                    CutbackUI.PauseMessage(pauseRoot, "Play a little longer to capture motion");
+                    return;
+                }
+                if (!usePrevious) AttemptStore.Save(snapshot);
+                // The provisional recording lives only in the recorder. Finalizing the
+                // local session discards it without publishing or serializing it on exit.
+                finalized = true;
+                ReviewCoordinator.Queue(snapshot, true);
+                // The normal exit unwinds gameplay before the replay owns the shared transition SO.
+                // Defer scene teardown until the UI click has completed dispatching.
+                reviewExitAt = Time.realtimeSinceStartup + 0.06f;
+                reviewExitRequested = true;
+                exitReview = () => returnToMenu.ReturnToMenu();
+                CutbackUI.PauseMessage(pauseRoot, "Opening replay");
+                Plugin.Log.Info("Queued pause replay " + snapshot.Header.Id + " with " + snapshot.Replay.frames.Count + " frames");
             }
-            AttemptStore.Save(snapshot);
-            finalized = true;
-            ReviewCoordinator.Queue(snapshot, true);
-            // The normal exit unwinds gameplay before the replay owns the shared transition SO.
-            // Defer scene teardown until the UI click has completed dispatching.
-            reviewExitAt = Time.realtimeSinceStartup + 0.06f;
-            reviewExitRequested = true;
-            exitReview = () => returnToMenu.ReturnToMenu();
-            CutbackUI.PauseMessage(pauseRoot, "Opening replay");
-            Plugin.Log.Info("Queued pause replay " + snapshot.Header.Id + " with " + snapshot.Replay.frames.Count + " frames");
-        });
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex);
+                CutbackUI.PauseMessage(pauseRoot, "Replay needs attention. See the game log.");
+            }
+            finally { reviewLoading = false; }
+        }
 
         internal bool ReviewDeath(StandardLevelFailedController controller)
         {
             if (!enabled || finalized || !Plugin.Settings.ReplayOnDeath || reviewExitRequested) return false;
+            if (PreservesPreviousReplay()) return false;
             var snapshot = Snapshot("Failed");
             if (snapshot == null || snapshot.Replay.frames.Count < 2) return false;
             snapshot.Header.DeathTime = clock.songTime;
@@ -188,9 +215,25 @@ namespace Cutback
         internal void Save(string reason, bool finish)
         {
             if (!enabled || finalized) return;
-            var snapshot = Snapshot(reason);
-            if (snapshot != null) AttemptStore.Save(snapshot);
+            if (!PreservesPreviousReplay())
+            {
+                var snapshot = Snapshot(reason);
+                if (snapshot != null && snapshot.Replay.frames.Count >= 2) AttemptStore.Save(snapshot);
+            }
             if (finish) { finalized = true; outcome = reason; }
+        }
+
+        private void UpdateReplayOwnership()
+        {
+            if (recordingPromoted || clock.songTime - segmentStart < replacementSeconds) return;
+            recordingPromoted = true;
+            AttemptStore.PromoteRecording(id);
+        }
+
+        private bool PreservesPreviousReplay()
+        {
+            UpdateReplayOwnership();
+            return !recordingPromoted && AttemptStore.HasPrevious(id);
         }
 
         private AttemptSnapshot Snapshot(string reason)

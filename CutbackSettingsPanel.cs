@@ -21,17 +21,18 @@ namespace Cutback
         [UIAction("#post-parse")]
         private void Build()
         {
-            content = CutbackUI.Root(host, "RecentReplaySettings", new Vector2(110, 64));
+            content = CutbackUI.Root(host, "RecentReplaySettings", new Vector2(110, 74));
             var layout = content.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
             layout.preferredWidth = 110;
-            layout.preferredHeight = 64;
-            Toggle("Replay on death", 26, () => Plugin.Settings.ReplayOnDeath, v => Plugin.Settings.ReplayOnDeath = v);
-            Toggle("Automatic slow motion", 17, () => Plugin.Settings.AutomaticSlowMotion, v => Plugin.Settings.AutomaticSlowMotion = v);
-            Number("Start before death", 8, () => Plugin.Settings.ReviewLeadSeconds, v => Plugin.Settings.ReviewLeadSeconds = v, 1, 1, 15, "s");
-            Number("Slowdown duration", -1, () => Plugin.Settings.SlowdownSeconds, v => Plugin.Settings.SlowdownSeconds = v, 0.5f, 0.5f, 10, "s");
-            Number("Minimum speed", -10, () => Plugin.Settings.MistakeSpeedPercent, v => Plugin.Settings.MistakeSpeedPercent = v, 5, 5, 50, "%");
-            Number("Recent clip length", -19, () => Plugin.Settings.BufferSeconds, v => Plugin.Settings.BufferSeconds = v, 5, 5, 120, "s");
-            Toggle("Loop death clip", -28, () => Plugin.Settings.LoopDeathClip, v => Plugin.Settings.LoopDeathClip = v);
+            layout.preferredHeight = 74;
+            Toggle("Replay on death", 31, () => Plugin.Settings.ReplayOnDeath, v => Plugin.Settings.ReplayOnDeath = v);
+            Toggle("Automatic slow motion", 22, () => Plugin.Settings.AutomaticSlowMotion, v => Plugin.Settings.AutomaticSlowMotion = v);
+            Number("Start before death", 13, () => Plugin.Settings.ReviewLeadSeconds, v => Plugin.Settings.ReviewLeadSeconds = v, 1, 1, 15, "s");
+            Number("Slowdown duration", 4, () => Plugin.Settings.SlowdownSeconds, v => Plugin.Settings.SlowdownSeconds = v, 0.5f, 0.5f, 10, "s");
+            Number("Minimum speed", -5, () => Plugin.Settings.MistakeSpeedPercent, v => Plugin.Settings.MistakeSpeedPercent = v, 5, 5, 50, "%");
+            Number("Recent clip length", -14, () => Plugin.Settings.BufferSeconds, v => Plugin.Settings.BufferSeconds = v, 5, 5, 120, "s");
+            Number("Replace replay after", -23, () => Plugin.Settings.ReplayReplacementSeconds, v => Plugin.Settings.ReplayReplacementSeconds = v, 1, 0, 120, "s");
+            Toggle("Loop death clip", -32, () => Plugin.Settings.LoopDeathClip, v => Plugin.Settings.LoopDeathClip = v);
         }
 
         private void Toggle(string title, float y, Func<bool> get, Action<bool> set)

@@ -77,6 +77,7 @@ namespace Cutback
         public virtual int CheckpointSeconds { get; set; } = 30;
         public virtual bool ReplayOnDeath { get; set; } = true;
         public virtual float BufferSeconds { get; set; } = 20;
+        public virtual float ReplayReplacementSeconds { get; set; } = 5;
         public virtual float SlowdownSeconds { get; set; } = 3;
         public virtual bool LoopDeathClip { get; set; } = false;
     }

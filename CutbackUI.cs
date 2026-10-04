@@ -50,6 +50,7 @@ namespace Cutback
             var rect = Root(parent, "ForgeButton", new Vector2(width, height));
             rect.anchoredPosition = new Vector2(x, y);
             var image = rect.gameObject.AddComponent<ImageView>();
+            image.sprite = Utilities.ImageResources.BlankSprite;
             image.gradient = true;
             image.color0 = new Color(0.03f, 0.12f, 0.19f, filled ? 0.85f : 0.35f);
             image.color1 = new Color(0.08f, 0.28f, 0.34f, filled ? 0.85f : 0.35f);
@@ -159,6 +160,7 @@ namespace Cutback
                 var rect = Root(button.transform, "ForgeFlatBackground", (button.transform as RectTransform).rect.size);
                 rect.SetAsFirstSibling();
                 var flat = rect.gameObject.AddComponent<ImageView>();
+                flat.sprite = Utilities.ImageResources.BlankSprite;
                 flat.material = Utilities.ImageResources.NoGlowMat;
                 flat.gradient = true;
                 flat.color0 = new Color(0.03f, 0.12f, 0.19f, 0.9f);

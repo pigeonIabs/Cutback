@@ -8,6 +8,10 @@ Misses and bad cuts are captured before the energy counter can trigger failure f
 
 AttemptStore keeps the latest snapshot in memory and serializes writes on a background queue. It flushes temporary files before atomically replacing latest.bsor and latest.json. Embedded metadata supports recovery independently of the index. Previous replay metadata is accepted for migration.
 
+New attempts have a configurable replay replacement interval, defaulting to five song seconds measured from the current segment's start. BeatLeader's existing recorder captures the provisional attempt from its first frame while AttemptStore retains the previous snapshot. Every publication path respects this interval, including pause, checkpoint, failure, restart, seek and disposal. Reviewing during the interval queues the previous snapshot and finalizes the provisional local session so teardown preserves the previous replay. Automatic death review yields to the usual failure/restart flow for protected short attempts.
+
+Crossing the interval latches ownership and clears the previous snapshot/index references. This transition performs constant work without frame copying, encoding, file operations or forced garbage collection. The new recording continues in the same recorder lists. Its next ordinary save takes an owned snapshot and replaces the persisted file on the background writer. The previous on-disk checkpoint stays available for crash recovery until that replacement succeeds. Background startup recovery respects the ownership latch so a retired attempt stays retired in the running session.
+
 ## Death review
 
 The failure handler queues a local snapshot and defers scene teardown until the energy event finishes dispatching. It completes the live attempt with its failed state and a quit action. The menu opens the queued replay after the live gameplay scene is disposed and the scene transition ends. The usual results presentation yields to the pending death review.
